@@ -4028,10 +4028,12 @@ impl Em {
         }
     }
 
-    /// Split wave64: whether the pairs meet through arrival counters (several console waves
-    /// per group, or `XCL_WAVE64_SPIN` for testing) instead of group barriers.
+    /// Split wave64: meet through bounded arrival counters (`XCL_X_SPIN 1`) by default so
+    /// divergent wave32 halves can never permanently deadlock a GPU SM at an unbounded
+    /// `GroupMemoryBarrierWithGroupSync()`. Set `XCL_WAVE64_SPIN=0` to force group barriers
+    /// for 1-wave64 groups.
     fn x64_spin(&self) -> bool {
-        self.x64_threads() > 64 || std::env::var_os("XCL_WAVE64_SPIN").is_some()
+        self.x64_threads() > 64 || std::env::var("XCL_WAVE64_SPIN").map_or(true, |v| v.trim() != "0")
     }
 
     /// The console LDS block (`xcl_lds`) is declared before the split-wave64 prelude, which
