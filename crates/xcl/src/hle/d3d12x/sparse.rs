@@ -1654,6 +1654,7 @@ mod tests {
                 pools: Vec::new(),
                 free: Vec::new(),
                 retired: Vec::new(),
+                parked: FxHashMap::default(),
                 mapped: FxHashMap::default(),
                 pinned: FxHashMap::default(),
                 buffers: FxHashMap::default(),

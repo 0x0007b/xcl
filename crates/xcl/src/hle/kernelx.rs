@@ -1268,7 +1268,8 @@ unsafe fn map_pages(away: &mut Away, va: *mut c_void, n: usize, arr: *mut usize)
                     (at_run, home_run) = Default::default();
                     continue;
                 }
-                Ok(false) => (at_run, home_run) = Default::default(),
+                // a lazy page is only unmarked: memory is as it was, the runs stay
+                Ok(false) => {}
                 Err(()) => {
                     fnd::SetLastError(fnd::ERROR_INVALID_ADDRESS);
                     return std::ptr::null_mut();
