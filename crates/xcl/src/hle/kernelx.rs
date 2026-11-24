@@ -1064,14 +1064,17 @@ unsafe fn release_at(at: usize) {
 /// at a time after its first movie spent 20 s in them and its watchdog ended it. False: the page
 /// was never used at `old` (its home holds it, zeros) and is not mapped anywhere now.
 unsafe fn move_away(away: &mut Away, old: usize, at: usize, page: usize, in_uma: bool) -> Result<bool, ()> {
-    away.at.remove(&old);
-    away.page.remove(&page);
     if lazy::unmark(old) {
+        away.at.remove(&old);
+        away.page.remove(&page);
         return Ok(false);
     }
+    // (a destination that cannot be committed leaves the page where it was, mapped as before)
     if !in_uma && mem::VirtualAlloc(at as *const c_void, PHYS_PAGE, mem::MEM_COMMIT, mem::PAGE_READWRITE).is_null() {
         return Err(());
     }
+    away.at.remove(&old);
+    away.page.remove(&page);
     std::ptr::copy_nonoverlapping(old as *const u8, at as *mut u8, PHYS_PAGE);
     if crate::gpu::uma::get().is_some_and(|u| u.is_sparse(at)) {
         crate::hle::d3d12x::sparse::committed(at, PHYS_PAGE);
@@ -2252,6 +2255,28 @@ mod tests {
             assert_eq!(XMemMapPhysicalPagesScatter(&b, 1, zero.as_mut_ptr()), 1);
             assert_eq!(FreeTitlePhysicalPages(std::ptr::null_mut(), 1, pages.as_mut_ptr()), 1);
             mem::VirtualFree(r as *mut c_void, 0, mem::MEM_RELEASE);
+        }
+    }
+
+    /// A move whose destination cannot be committed fails with the page still mapped away where
+    /// it was: its bytes and both lookups are kept.
+    #[test]
+    fn a_page_whose_move_fails_stays_mapped_where_it_was() {
+        unsafe {
+            let old = mem::VirtualAlloc(std::ptr::null(), PHYS_PAGE, mem::MEM_RESERVE | mem::MEM_COMMIT, mem::PAGE_READWRITE) as usize;
+            *(old as *mut u32) = 7;
+            // an address with nothing reserved: committing there fails
+            let at = mem::VirtualAlloc(std::ptr::null(), PHYS_PAGE, mem::MEM_RESERVE, mem::PAGE_READWRITE) as usize;
+            mem::VirtualFree(at as *mut c_void, 0, mem::MEM_RELEASE);
+            let page = 0x7E57_0000usize;
+            let mut away = Away { at: Default::default(), page: Default::default(), gone: Vec::new() };
+            away.at.insert(old, page);
+            away.page.insert(page, old);
+            assert!(move_away(&mut away, old, at, page, false).is_err());
+            assert_eq!(away.page.get(&page), Some(&old), "the page lost where it is");
+            assert_eq!(away.at.get(&old), Some(&page));
+            assert_eq!(*(old as *const u32), 7);
+            mem::VirtualFree(old as *mut c_void, 0, mem::MEM_RELEASE);
         }
     }
 
